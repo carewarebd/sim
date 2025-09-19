@@ -149,7 +149,7 @@ Total Base ElastiCache Cost: $329.48/month
 **Redis Scaling Options**
 
 | Scale | Node Type | Nodes | Memory | Monthly Cost |
-|-------|-----------|-------|---------||--------------|
+|-------|-----------|-------|---------|--------------|
 | Base | cache.r6g.large | 2 | 26 GB | $329.48 |
 | Medium | cache.r6g.xlarge | 2 | 52 GB | $658.96 |
 | High | cache.r6g.2xlarge | 3 | 156 GB | $1,976.88 |
@@ -176,7 +176,7 @@ Total Base OpenSearch Cost: $204.12/month
 **OpenSearch Scaling**
 
 | Data Volume | Instance Type | Nodes | Storage | Monthly Cost |
-|-------------|---------------|-------|---------||--------------|
+|-------------|---------------|-------|---------|--------------|
 | 100 GB | t3.medium.search | 2 | 200 GB | $204.12 |
 | 500 GB | t3.large.search | 2 | 1000 GB | $408.24 |
 | 1 TB | m6g.large.search | 3 | 2000 GB | $816.48 |
@@ -273,7 +273,7 @@ Total Networking: $70.70/month
 - Month 10-12: 7,500 shops
 
 | Month | Shops | Users | Monthly Cost | Cumulative Cost |
-|-------|-------|-------|--------------||-----------------|
+|-------|-------|-------|--------------|-----------------|
 | 1-3 | 1,000 | 10,000 | $1,200 | $3,600 |
 | 4-6 | 2,500 | 25,000 | $1,800 | $9,000 |
 | 7-9 | 5,000 | 50,000 | $2,538 | $16,614 |
@@ -396,7 +396,7 @@ Total CDN Savings: $55.25/month
 **Monthly Operational Expenses**
 
 | Category | Hours/Month | Rate/Hour | Monthly Cost |
-|----------|-------------|-----------||--------------|
+|----------|-------------|-----------|--------------|
 | **DevOps Engineer** | 40 | $75 | $3,000 |
 | **System Admin** | 20 | $50 | $1,000 |
 | **Security Monitoring** | 10 | $100 | $1,000 |
@@ -430,7 +430,7 @@ Business Costs:
 **Complete Monthly Breakdown at Medium Scale**
 
 | Category | Monthly Cost | Annual Cost |
-|----------|--------------||-----------|
+|----------|--------------|-----------|
 | **AWS Infrastructure** | $2,538 | $30,456 |
 | **Operational Staff** | $5,700 | $68,400 |
 | **Development** | $28,000 | $336,000 |
