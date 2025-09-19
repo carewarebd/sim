@@ -1,0 +1,157 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1200" height="800" viewBox="0 0 1200 800" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <style>
+      .title { font-family: Arial, sans-serif; font-size: 20px; font-weight: bold; fill: #1f2937; }
+      .label { font-family: Arial, sans-serif; font-size: 12px; fill: #374151; }
+      .sublabel { font-family: Arial, sans-serif; font-size: 10px; fill: #6b7280; }
+      .primary { fill: #2563eb; stroke: #1d4ed8; }
+      .secondary { fill: #059669; stroke: #047857; }
+      .accent { fill: #dc2626; stroke: #b91c1c; }
+      .neutral { fill: #6b7280; stroke: #4b5563; }
+      .data { fill: #f59e0b; stroke: #d97706; }
+      .connection { stroke: #6b7280; stroke-width: 2; fill: none; }
+      .flow { stroke: #2563eb; stroke-width: 2; fill: none; marker-end: url(#arrowhead); }
+    </style>
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#2563eb" />
+    </marker>
+  </defs>
+
+  <!-- Title -->
+  <text x="600" y="30" class="title" text-anchor="middle">Shop Management System Architecture</text>
+
+  <!-- Users Layer -->
+  <rect x="50" y="60" width="120" height="60" class="accent" rx="5"/>
+  <text x="110" y="85" class="label" text-anchor="middle">Shop Owners</text>
+  <text x="110" y="105" class="sublabel" text-anchor="middle">Web/Mobile</text>
+
+  <rect x="200" y="60" width="120" height="60" class="accent" rx="5"/>
+  <text x="260" y="85" class="label" text-anchor="middle">Customers</text>
+  <text x="260" y="105" class="sublabel" text-anchor="middle">Marketplace</text>
+
+  <!-- CDN & Load Balancer -->
+  <rect x="400" y="60" width="150" height="60" class="primary" rx="5"/>
+  <text x="475" y="85" class="label" text-anchor="middle">CloudFront CDN</text>
+  <text x="475" y="105" class="sublabel" text-anchor="middle">Global Edge Cache</text>
+
+  <rect x="600" y="60" width="150" height="60" class="primary" rx="5"/>
+  <text x="675" y="85" class="label" text-anchor="middle">ALB + WAF</text>
+  <text x="675" y="105" class="sublabel" text-anchor="middle">SSL Termination</text>
+
+  <!-- VPC Container -->
+  <rect x="50" y="160" width="1100" height="500" class="neutral" rx="10" fill="#f9fafb" stroke="#e5e7eb" stroke-width="2"/>
+  <text x="70" y="180" class="label">VPC (us-east-1)</text>
+
+  <!-- Application Layer -->
+  <rect x="80" y="200" width="300" height="180" class="primary" rx="5" fill="#eff6ff" stroke="#2563eb"/>
+  <text x="230" y="220" class="label" text-anchor="middle">Application Layer</text>
+  
+  <rect x="100" y="240" width="120" height="40" class="primary" rx="3"/>
+  <text x="160" y="265" class="label" text-anchor="middle">ECS Fargate</text>
+  
+  <rect x="240" y="240" width="120" height="40" class="primary" rx="3"/>
+  <text x="300" y="265" class="label" text-anchor="middle">API Services</text>
+  
+  <rect x="100" y="300" width="120" height="40" class="secondary" rx="3"/>
+  <text x="160" y="325" class="label" text-anchor="middle">Lambda</text>
+  
+  <rect x="240" y="300" width="120" height="40" class="secondary" rx="3"/>
+  <text x="300" y="325" class="label" text-anchor="middle">Background</text>
+
+  <!-- Data Layer -->
+  <rect x="420" y="200" width="300" height="180" class="data" rx="5" fill="#fef3c7" stroke="#f59e0b"/>
+  <text x="570" y="220" class="label" text-anchor="middle">Data Layer</text>
+  
+  <rect x="440" y="240" width="80" height="40" class="data" rx="3"/>
+  <text x="480" y="260" class="sublabel" text-anchor="middle">PostgreSQL</text>
+  <text x="480" y="275" class="sublabel" text-anchor="middle">Aurora</text>
+  
+  <rect x="540" y="240" width="80" height="40" class="secondary" rx="3"/>
+  <text x="580" y="260" class="sublabel" text-anchor="middle">OpenSearch</text>
+  <text x="580" y="275" class="sublabel" text-anchor="middle">Cluster</text>
+  
+  <rect x="640" y="240" width="60" height="40" class="accent" rx="3"/>
+  <text x="670" y="260" class="sublabel" text-anchor="middle">Redis</text>
+  <text x="670" y="275" class="sublabel" text-anchor="middle">Cache</text>
+
+  <rect x="440" y="300" width="120" height="40" class="data" rx="3"/>
+  <text x="500" y="325" class="label" text-anchor="middle">Read Replicas</text>
+  
+  <rect x="580" y="300" width="120" height="40" class="secondary" rx="3"/>
+  <text x="640" y="325" class="label" text-anchor="middle">Search Nodes</text>
+
+  <!-- Storage & Services Layer -->
+  <rect x="760" y="200" width="300" height="180" class="secondary" rx="5" fill="#ecfdf5" stroke="#059669"/>
+  <text x="910" y="220" class="label" text-anchor="middle">AWS Services</text>
+  
+  <rect x="780" y="240" width="80" height="40" class="secondary" rx="3"/>
+  <text x="820" y="260" class="sublabel" text-anchor="middle">S3</text>
+  <text x="820" y="275" class="sublabel" text-anchor="middle">Storage</text>
+  
+  <rect x="880" y="240" width="80" height="40" class="primary" rx="3"/>
+  <text x="920" y="260" class="sublabel" text-anchor="middle">Cognito</text>
+  <text x="920" y="275" class="sublabel" text-anchor="middle">Auth</text>
+  
+  <rect x="980" y="240" width="60" height="40" class="accent" rx="3"/>
+  <text x="1010" y="260" class="sublabel" text-anchor="middle">SQS</text>
+  <text x="1010" y="275" class="sublabel" text-anchor="middle">SNS</text>
+
+  <rect x="780" y="300" width="120" height="40" class="secondary" rx="3"/>
+  <text x="840" y="325" class="label" text-anchor="middle">CloudWatch</text>
+  
+  <rect x="920" y="300" width="120" height="40" class="neutral" rx="3"/>
+  <text x="980" y="325" class="label" text-anchor="middle">Monitoring</text>
+
+  <!-- External Services -->
+  <rect x="400" y="420" width="400" height="100" class="accent" rx="5" fill="#fef2f2" stroke="#dc2626"/>
+  <text x="600" y="440" class="label" text-anchor="middle">External Integrations</text>
+  
+  <rect x="420" y="460" width="100" height="40" class="accent" rx="3"/>
+  <text x="470" y="485" class="label" text-anchor="middle">Payment</text>
+  
+  <rect x="540" y="460" width="100" height="40" class="accent" rx="3"/>
+  <text x="590" y="485" class="label" text-anchor="middle">Email/SMS</text>
+  
+  <rect x="660" y="460" width="120" height="40" class="accent" rx="3"/>
+  <text x="720" y="485" class="label" text-anchor="middle">Push Notifications</text>
+
+  <!-- Data Flow Arrows -->
+  <path d="M 170 120 L 230 120" class="flow"/>
+  <path d="M 320 120 L 400 120" class="flow"/>
+  <path d="M 475 120 L 475 140" class="flow"/>
+  <path d="M 550 90 L 600 90" class="flow"/>
+  <path d="M 675 120 L 675 160" class="flow"/>
+  
+  <!-- Internal connections -->
+  <path d="M 380 290 L 420 290" class="flow"/>
+  <path d="M 300 320 L 440 320" class="flow"/>
+  <path d="M 570 320 L 760 280" class="flow"/>
+  <path d="M 640 340 L 640 420" class="flow"/>
+
+  <!-- Load metrics -->
+  <rect x="50" y="580" width="1100" height="160" class="neutral" rx="5" fill="#f3f4f6" stroke="#d1d5db"/>
+  <text x="70" y="600" class="label">System Load Specifications</text>
+  
+  <text x="80" y="630" class="sublabel">• 10,000 Shops (Multi-tenant)</text>
+  <text x="80" y="650" class="sublabel">• 100,000 Registered Users</text>
+  <text x="80" y="670" class="sublabel">• 50,000 Monthly Active Users</text>
+  <text x="80" y="690" class="sublabel">• 4,000 Daily Orders</text>
+  
+  <text x="350" y="630" class="sublabel">• Peak: 200 req/sec sustained</text>
+  <text x="350" y="650" class="sublabel">• Average: 30 req/sec</text>
+  <text x="350" y="670" class="sublabel">• 99.95% Availability SLA</text>
+  <text x="350" y="690" class="sublabel">• 200GB Monthly Growth</text>
+  
+  <text x="620" y="630" class="sublabel">Multi-Tenant Architecture:</text>
+  <text x="620" y="650" class="sublabel">• Shared schema with Row-Level Security</text>
+  <text x="620" y="670" class="sublabel">• Tenant isolation at database level</text>
+  <text x="620" y="690" class="sublabel">• Cost-optimized resource sharing</text>
+  
+  <text x="900" y="630" class="sublabel">Key Features:</text>
+  <text x="900" y="650" class="sublabel">• Product catalog management</text>
+  <text x="900" y="670" class="sublabel">• Inventory tracking & alerts</text>
+  <text x="900" y="690" class="sublabel">• Geospatial marketplace search</text>
+  <text x="900" y="710" class="sublabel">• Real-time order notifications</text>
+
+</svg>

@@ -1,0 +1,194 @@
+@startuml Shop Management System Architecture
+!define RECTANGLE class
+
+skinparam backgroundColor #FAFAFA
+skinparam shadowing false
+skinparam linetype ortho
+skinparam roundcorner 10
+
+' Define colors
+!define PRIMARY #2563EB
+!define SECONDARY #059669
+!define ACCENT #DC2626
+!define NEUTRAL #6B7280
+
+' User and External Services
+actor "Shop Owner" as owner
+actor "Customer" as customer
+actor "Salesperson" as salesperson
+
+cloud "Internet" as internet {
+    rectangle "Mobile Apps" as mobile #ACCENT
+    rectangle "Web Browser" as browser #ACCENT
+}
+
+' CDN and Edge
+rectangle "CloudFront CDN" as cdn #PRIMARY {
+    rectangle "Edge Locations" as edge
+    rectangle "Custom Domains" as domains
+}
+
+' Load Balancer and WAF
+rectangle "Application Load Balancer" as alb #PRIMARY {
+    rectangle "WAF" as waf
+    rectangle "SSL/TLS Termination" as ssl
+}
+
+' VPC and Network
+package "VPC (us-east-1)" as vpc #NEUTRAL {
+    
+    ' Public Subnet
+    package "Public Subnet" as public_subnet #f0f0f0 {
+        rectangle "NAT Gateway" as nat #SECONDARY
+    }
+    
+    ' Private Subnet - Application Tier
+    package "Private Subnet - App Tier" as app_subnet #e8f4fd {
+        rectangle "ECS Fargate Cluster" as ecs #PRIMARY {
+            rectangle "API Service\n(Node.js/Python)" as api1
+            rectangle "API Service\n(Auto-scaled)" as api2
+            rectangle "Background Workers" as workers
+        }
+        
+        rectangle "Lambda Functions" as lambda #SECONDARY {
+            rectangle "Notification Handler" as notif_lambda
+            rectangle "Report Generator" as report_lambda
+            rectangle "Image Processor" as image_lambda
+        }
+    }
+    
+    ' Private Subnet - Data Tier
+    package "Private Subnet - Data Tier" as data_subnet #fef7e8 {
+        database "Aurora PostgreSQL" as postgres #PRIMARY {
+            rectangle "Writer Instance\n(db.r6g.xlarge)" as pg_writer
+            rectangle "Reader Replica 1" as pg_reader1  
+            rectangle "Reader Replica 2" as pg_reader2
+        }
+        
+        database "OpenSearch Cluster" as opensearch #SECONDARY {
+            rectangle "Master Node 1" as os_master1
+            rectangle "Data Node 1" as os_data1
+            rectangle "Data Node 2" as os_data2
+        }
+        
+        database "ElastiCache Redis" as redis #ACCENT {
+            rectangle "Primary Node" as redis_primary
+            rectangle "Replica Node" as redis_replica
+        }
+    }
+}
+
+' External AWS Services
+cloud "AWS Services" as aws_services #NEUTRAL {
+    rectangle "S3 Buckets" as s3 #SECONDARY {
+        rectangle "Product Images" as s3_images
+        rectangle "Invoice PDFs" as s3_invoices
+        rectangle "Backups" as s3_backups
+        rectangle "Static Assets" as s3_static
+    }
+    
+    rectangle "Cognito" as cognito #PRIMARY {
+        rectangle "User Pools" as user_pools
+        rectangle "Identity Pools" as identity_pools
+    }
+    
+    rectangle "SQS/SNS" as messaging #ACCENT {
+        rectangle "Order Queue" as order_queue
+        rectangle "Notification Topics" as notif_topics
+        rectangle "Email/SMS" as email_sms
+    }
+    
+    rectangle "CloudWatch" as cloudwatch #SECONDARY {
+        rectangle "Metrics" as metrics
+        rectangle "Logs" as logs
+        rectangle "Alarms" as alarms
+    }
+}
+
+' External Services
+cloud "External Services" as external {
+    rectangle "Payment Gateway\n(Stripe/PayPal)" as payment #ACCENT
+    rectangle "Email Provider\n(SendGrid)" as email_provider #ACCENT
+    rectangle "SMS Provider\n(Twilio)" as sms_provider #ACCENT
+}
+
+' User Connections
+owner --> browser : Uses
+customer --> mobile : Uses
+salesperson --> browser : Uses
+
+' Traffic Flow
+browser --> internet
+mobile --> internet
+internet --> cdn : HTTPS
+cdn --> alb : Origin requests
+alb --> waf : Security filtering
+waf --> ssl : SSL termination
+
+' Application Flow
+ssl --> ecs : Load balanced
+ecs --> postgres : Read/Write
+ecs --> opensearch : Search queries
+ecs --> redis : Caching
+ecs --> s3 : File operations
+ecs --> messaging : Async tasks
+
+' Lambda Triggers
+messaging --> lambda : SQS triggers
+postgres --> lambda : CDC triggers
+s3 --> lambda : Upload events
+
+' Authentication Flow
+ecs --> cognito : JWT validation
+cognito --> user_pools : User management
+
+' External Integrations
+lambda --> payment : Payment processing
+lambda --> email_provider : Transactional emails
+lambda --> sms_provider : SMS notifications
+
+' Monitoring
+ecs --> cloudwatch : Metrics/Logs
+postgres --> cloudwatch : DB metrics
+opensearch --> cloudwatch : Search metrics
+lambda --> cloudwatch : Function metrics
+
+' Data Replication
+pg_writer --> pg_reader1 : Async replication
+pg_writer --> pg_reader2 : Async replication
+redis_primary --> redis_replica : Replication
+
+' Static Content
+s3_static --> cdn : Static assets origin
+cdn --> browser : Cached content
+
+' Notes
+note right of postgres
+  - Multi-tenant with RLS
+  - PostGIS for geospatial
+  - Connection pooling
+  - Automated backups
+end note
+
+note right of opensearch  
+  - Product search & analytics
+  - Geospatial queries
+  - Business intelligence
+  - Auto-scaling enabled
+end note
+
+note right of redis
+  - Session storage
+  - API response cache
+  - Pub/Sub messaging
+  - Cluster mode
+end note
+
+note right of ecs
+  - Auto-scaling 2-20 tasks
+  - Health checks
+  - Rolling deployments
+  - Container insights
+end note
+
+@enduml
