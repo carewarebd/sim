@@ -1,0 +1,1775 @@
+openapi: 3.1.0
+info:
+  title: Shop Management System API
+  description: |
+    Multi-tenant shop management system API providing comprehensive e-commerce 
+    functionality including product catalog, inventory management, order processing,
+    and marketplace integration.
+    
+    ## Authentication
+    This API uses OAuth 2.0 with JWT tokens issued by AWS Cognito.
+    Include the Bearer token in the Authorization header for all requests.
+    
+    ## Multi-tenancy  
+    All API endpoints automatically filter data by tenant based on the authenticated user.
+    The tenant context is established through the JWT token claims.
+    
+    ## Rate Limiting
+    - Authenticated requests: 100 requests per minute per user
+    - Public marketplace: 1000 requests per minute per IP
+    - Search endpoints: 500 requests per minute per user
+    
+    ## Error Handling
+    All errors follow RFC 7807 Problem Details format with structured error responses.
+  version: '1.0.0'
+  contact:
+    name: Shop Management API Support
+    email: api-support@shopmanagement.com
+  license:
+    name: Proprietary
+    url: https://shopmanagement.com/license
+
+servers:
+  - url: https://api.shopmanagement.com/v1
+    description: Production API
+  - url: https://api-staging.shopmanagement.com/v1  
+    description: Staging API
+
+security:
+  - CognitoJWT: []
+
+paths:
+  # =====================================================
+  # AUTHENTICATION ENDPOINTS  
+  # =====================================================
+  /auth/signup:
+    post:
+      tags: [Authentication]
+      summary: Register new user account
+      description: Create a new user account and send verification email
+      operationId: signUp
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password, firstName, lastName, tenantSlug]
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: "john@example.com"
+                password:
+                  type: string
+                  minLength: 8
+                  example: "SecurePass123!"
+                firstName:
+                  type: string
+                  maxLength: 100
+                  example: "John"
+                lastName:
+                  type: string
+                  maxLength: 100
+                  example: "Smith"
+                tenantSlug:
+                  type: string
+                  example: "demo-shop"
+                phone:
+                  type: string
+                  example: "+1-555-123-4567"
+      responses:
+        '201':
+          description: User account created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  userId:
+                    type: string
+                    format: uuid
+                  message:
+                    type: string
+                    example: "Verification email sent to john@example.com"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: User already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/signin:
+    post:
+      tags: [Authentication]
+      summary: Sign in user
+      description: Authenticate user and return JWT tokens
+      operationId: signIn
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+      responses:
+        '200':
+          description: Authentication successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accessToken:
+                    type: string
+                    example: "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
+                  refreshToken:
+                    type: string
+                  expiresIn:
+                    type: integer
+                    example: 3600
+                  user:
+                    $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/refresh:
+    post:
+      tags: [Authentication]
+      summary: Refresh access token
+      operationId: refreshToken
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken:
+                  type: string
+      responses:
+        '200':
+          description: Token refreshed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accessToken:
+                    type: string
+                  expiresIn:
+                    type: integer
+
+  # =====================================================
+  # TENANT MANAGEMENT
+  # =====================================================
+  /tenants/register:
+    post:
+      tags: [Tenants]
+      summary: Register new tenant
+      description: Create a new tenant (shop network) and owner account
+      operationId: registerTenant
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, slug, ownerEmail, ownerPassword, ownerFirstName, ownerLastName]
+              properties:
+                name:
+                  type: string
+                  example: "My Shop Network"
+                slug:
+                  type: string
+                  pattern: '^[a-z0-9-]+$'
+                  example: "my-shop-network"
+                domain:
+                  type: string
+                  example: "myshop.com"
+                ownerEmail:
+                  type: string
+                  format: email
+                ownerPassword:
+                  type: string
+                  minLength: 8
+                ownerFirstName:
+                  type: string
+                ownerLastName:
+                  type: string
+      responses:
+        '201':
+          description: Tenant registered successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tenantId:
+                    type: string
+                    format: uuid
+                  ownerId:
+                    type: string
+                    format: uuid
+                  message:
+                    type: string
+
+  /tenants/invite:
+    post:
+      tags: [Tenants]
+      summary: Invite user to tenant
+      operationId: inviteUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, role]
+              properties:
+                email:
+                  type: string
+                  format: email
+                role:
+                  type: string
+                  enum: [admin, salesperson, viewer]
+                firstName:
+                  type: string
+                lastName:
+                  type: string
+      responses:
+        '200':
+          description: Invitation sent successfully
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  # =====================================================
+  # PRODUCT MANAGEMENT
+  # =====================================================
+  /products:
+    get:
+      tags: [Products]
+      summary: List products
+      description: Retrieve paginated list of products with filtering options
+      operationId: listProducts
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: category
+          in: query
+          description: Filter by category ID
+          schema:
+            type: string
+            format: uuid
+        - name: search
+          in: query
+          description: Search products by name or description
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [active, inactive]
+            default: active
+        - name: inStock
+          in: query
+          schema:
+            type: boolean
+        - name: minPrice
+          in: query
+          schema:
+            type: number
+            format: decimal
+        - name: maxPrice
+          in: query
+          schema:
+            type: number
+            format: decimal
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [name, price, created_at, stock_quantity]
+            default: created_at
+        - name: order
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+      responses:
+        '200':
+          description: Products retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  products:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Product'
+                  pagination:
+                    $ref: '#/components/schemas/PaginationResponse'
+
+    post:
+      tags: [Products]
+      summary: Create product
+      operationId: createProduct
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateProductRequest'
+      responses:
+        '201':
+          description: Product created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /products/{productId}:
+    get:
+      tags: [Products]
+      summary: Get product details
+      operationId: getProduct
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+      responses:
+        '200':
+          description: Product details retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      tags: [Products]
+      summary: Update product
+      operationId: updateProduct
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProductRequest'
+      responses:
+        '200':
+          description: Product updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+
+    delete:
+      tags: [Products]
+      summary: Delete product
+      operationId: deleteProduct
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+      responses:
+        '204':
+          description: Product deleted successfully
+
+  /products/{productId}/images/upload-url:
+    post:
+      tags: [Products]
+      summary: Get presigned URL for image upload
+      description: Generate S3 presigned URL for product image upload
+      operationId: getImageUploadUrl
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [fileName, contentType]
+              properties:
+                fileName:
+                  type: string
+                  example: "product-image.jpg"
+                contentType:
+                  type: string
+                  example: "image/jpeg"
+      responses:
+        '200':
+          description: Presigned URL generated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  uploadUrl:
+                    type: string
+                    format: uri
+                  imageUrl:
+                    type: string
+                    format: uri
+                    description: URL of image after upload
+                  expiresIn:
+                    type: integer
+                    description: URL expiration time in seconds
+
+  # =====================================================
+  # INVENTORY MANAGEMENT
+  # =====================================================
+  /inventory/adjust:
+    post:
+      tags: [Inventory]
+      summary: Adjust product stock
+      operationId: adjustStock
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [productId, quantity, type]
+              properties:
+                productId:
+                  type: string
+                  format: uuid
+                quantity:
+                  type: integer
+                  description: Positive for stock increase, negative for decrease
+                type:
+                  type: string
+                  enum: [adjustment, restock, damage, transfer]
+                notes:
+                  type: string
+                referenceNumber:
+                  type: string
+      responses:
+        '200':
+          description: Stock adjusted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  transactionId:
+                    type: string
+                    format: uuid
+                  previousQuantity:
+                    type: integer
+                  newQuantity:
+                    type: integer
+
+  /inventory/low-stock:
+    get:
+      tags: [Inventory]
+      summary: Get low stock products
+      description: Retrieve products with stock at or below minimum level
+      operationId: getLowStockProducts
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            maximum: 100
+            default: 50
+      responses:
+        '200':
+          description: Low stock products retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  products:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          format: uuid
+                        name:
+                          type: string
+                        sku:
+                          type: string
+                        currentStock:
+                          type: integer
+                        minimumLevel:
+                          type: integer
+                        lastRestocked:
+                          type: string
+                          format: date-time
+
+  # =====================================================
+  # ORDER MANAGEMENT
+  # =====================================================
+  /orders:
+    get:
+      tags: [Orders]
+      summary: List orders
+      operationId: listOrders
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            maximum: 100
+            default: 20
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, confirmed, processing, shipped, delivered, cancelled, refunded]
+        - name: salespersonId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: dateFrom
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: dateTo
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: customerId
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Orders retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  orders:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Order'
+                  pagination:
+                    $ref: '#/components/schemas/PaginationResponse'
+
+    post:
+      tags: [Orders]
+      summary: Create order
+      operationId: createOrder
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrderRequest'
+      responses:
+        '201':
+          description: Order created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+
+  /orders/{orderId}:
+    get:
+      tags: [Orders]
+      summary: Get order details
+      operationId: getOrder
+      parameters:
+        - $ref: '#/components/parameters/OrderId'
+      responses:
+        '200':
+          description: Order details retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderDetails'
+
+    patch:
+      tags: [Orders]
+      summary: Update order status
+      operationId: updateOrderStatus
+      parameters:
+        - $ref: '#/components/parameters/OrderId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  type: string
+                  enum: [confirmed, processing, shipped, delivered, cancelled]
+                notes:
+                  type: string
+      responses:
+        '200':
+          description: Order status updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+
+  # =====================================================
+  # PUBLIC MARKETPLACE
+  # =====================================================
+  /marketplace/search:
+    get:
+      tags: [Marketplace]
+      summary: Search products in marketplace
+      description: Public endpoint for searching products across all shops
+      operationId: searchMarketplace
+      security: []
+      parameters:
+        - name: q
+          in: query
+          required: true
+          description: Search query
+          schema:
+            type: string
+        - name: category
+          in: query
+          schema:
+            type: string
+        - name: latitude
+          in: query
+          description: User's latitude for location-based search
+          schema:
+            type: number
+            format: double
+        - name: longitude
+          in: query
+          description: User's longitude for location-based search
+          schema:
+            type: number
+            format: double
+        - name: radius
+          in: query
+          description: Search radius in kilometers
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 10
+        - name: minPrice
+          in: query
+          schema:
+            type: number
+            format: decimal
+        - name: maxPrice
+          in: query
+          schema:
+            type: number
+            format: decimal
+        - name: inStock
+          in: query
+          schema:
+            type: boolean
+            default: true
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            maximum: 50
+            default: 20
+      responses:
+        '200':
+          description: Search results retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  products:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MarketplaceProduct'
+                  pagination:
+                    $ref: '#/components/schemas/PaginationResponse'
+                  filters:
+                    type: object
+                    description: Available filter options based on search results
+
+  /marketplace/shops/nearby:
+    get:
+      tags: [Marketplace]
+      summary: Find nearby shops
+      security: []
+      parameters:
+        - name: latitude
+          in: query
+          required: true
+          schema:
+            type: number
+            format: double
+        - name: longitude
+          in: query
+          required: true
+          schema:
+            type: number
+            format: double
+        - name: radius
+          in: query
+          schema:
+            type: integer
+            default: 10
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            maximum: 50
+            default: 20
+      responses:
+        '200':
+          description: Nearby shops found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  shops:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/NearbyShop'
+
+  /marketplace/orders:
+    post:
+      tags: [Marketplace]
+      summary: Place marketplace order
+      description: Create order from marketplace (pickup or delivery)
+      operationId: placeMarketplaceOrder
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MarketplaceOrderRequest'
+      responses:
+        '201':
+          description: Order placed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  orderId:
+                    type: string
+                    format: uuid
+                  orderNumber:
+                    type: string
+                  estimatedReady:
+                    type: string
+                    format: date-time
+                  totalAmount:
+                    type: number
+                    format: decimal
+
+  # =====================================================
+  # SALES & REPORTS
+  # =====================================================
+  /reports/daily-sales:
+    get:
+      tags: [Reports]
+      summary: Get daily sales report
+      operationId: getDailySalesReport
+      parameters:
+        - name: date
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: salespersonId
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Daily sales report
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DailySalesReport'
+
+  /reports/sales-by-salesperson:
+    get:
+      tags: [Reports]
+      summary: Get sales by salesperson
+      operationId: getSalesBySalesperson
+      parameters:
+        - name: month
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+            example: "2024-09"
+      responses:
+        '200':
+          description: Salesperson performance report
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  period:
+                    type: string
+                  salespeople:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SalespersonPerformance'
+
+  /reports/product-popularity:
+    get:
+      tags: [Reports]
+      summary: Get product popularity report
+      operationId: getProductPopularity
+      parameters:
+        - name: period
+          in: query
+          schema:
+            type: string
+            enum: [week, month, quarter]
+            default: month
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            maximum: 100
+            default: 50
+      responses:
+        '200':
+          description: Product popularity report
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  period:
+                    type: string
+                  products:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ProductPopularity'
+
+  # =====================================================
+  # INVOICE MANAGEMENT
+  # =====================================================
+  /invoices:
+    get:
+      tags: [Invoices]
+      summary: List invoices
+      operationId: listInvoices
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            maximum: 100
+            default: 20
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [draft, sent, paid, overdue, cancelled]
+        - name: orderId
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Invoices retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  invoices:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Invoice'
+                  pagination:
+                    $ref: '#/components/schemas/PaginationResponse'
+
+  /invoices/{invoiceId}/generate-pdf:
+    post:
+      tags: [Invoices]
+      summary: Generate invoice PDF
+      operationId: generateInvoicePdf
+      parameters:
+        - $ref: '#/components/parameters/InvoiceId'
+      responses:
+        '200':
+          description: PDF generated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pdfUrl:
+                    type: string
+                    format: uri
+                  expiresAt:
+                    type: string
+                    format: date-time
+
+  # =====================================================
+  # NOTIFICATION MANAGEMENT
+  # =====================================================
+  /notifications:
+    get:
+      tags: [Notifications]
+      summary: Get user notifications
+      operationId: getUserNotifications
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            maximum: 100
+            default: 50
+        - name: unreadOnly
+          in: query
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: Notifications retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  notifications:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Notification'
+                  unreadCount:
+                    type: integer
+                  pagination:
+                    $ref: '#/components/schemas/PaginationResponse'
+
+  /notifications/{notificationId}/mark-read:
+    patch:
+      tags: [Notifications]
+      summary: Mark notification as read
+      operationId: markNotificationRead
+      parameters:
+        - name: notificationId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Notification marked as read
+
+  /notifications/mark-all-read:
+    patch:
+      tags: [Notifications]
+      summary: Mark all notifications as read
+      operationId: markAllNotificationsRead
+      responses:
+        '200':
+          description: All notifications marked as read
+
+# =====================================================
+# COMPONENTS
+# =====================================================
+components:
+  securitySchemes:
+    CognitoJWT:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token issued by AWS Cognito
+
+  parameters:
+    ProductId:
+      name: productId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+    OrderId:
+      name: orderId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+    InvoiceId:
+      name: invoiceId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  schemas:
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        firstName:
+          type: string
+        lastName:
+          type: string
+        role:
+          type: string
+          enum: [owner, admin, salesperson, viewer]
+        status:
+          type: string
+          enum: [active, inactive, pending]
+        createdAt:
+          type: string
+          format: date-time
+        lastLoginAt:
+          type: string
+          format: date-time
+
+    Product:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        slug:
+          type: string
+        description:
+          type: string
+        shortDescription:
+          type: string
+        sku:
+          type: string
+        barcode:
+          type: string
+        price:
+          type: number
+          format: decimal
+        costPrice:
+          type: number
+          format: decimal
+        weight:
+          type: number
+          format: decimal
+        dimensions:
+          type: object
+          properties:
+            length:
+              type: number
+            width:
+              type: number
+            height:
+              type: number
+            unit:
+              type: string
+        attributes:
+          type: object
+        tags:
+          type: array
+          items:
+            type: string
+        images:
+          type: array
+          items:
+            type: string
+            format: uri
+        isActive:
+          type: boolean
+        isFeatured:
+          type: boolean
+        inStock:
+          type: boolean
+        stockQuantity:
+          type: integer
+        minStockLevel:
+          type: integer
+        maxStockLevel:
+          type: integer
+        allowBackorder:
+          type: boolean
+        categoryId:
+          type: string
+          format: uuid
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreateProductRequest:
+      type: object
+      required: [name, sku, price]
+      properties:
+        name:
+          type: string
+          maxLength: 255
+        description:
+          type: string
+        shortDescription:
+          type: string
+          maxLength: 500
+        sku:
+          type: string
+          maxLength: 100
+        barcode:
+          type: string
+        price:
+          type: number
+          format: decimal
+          minimum: 0
+        costPrice:
+          type: number
+          format: decimal
+          minimum: 0
+        categoryId:
+          type: string
+          format: uuid
+        weight:
+          type: number
+        dimensions:
+          type: object
+        attributes:
+          type: object
+        tags:
+          type: array
+          items:
+            type: string
+        stockQuantity:
+          type: integer
+          minimum: 0
+          default: 0
+        minStockLevel:
+          type: integer
+          minimum: 0
+          default: 0
+        maxStockLevel:
+          type: integer
+        allowBackorder:
+          type: boolean
+          default: false
+
+    UpdateProductRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        price:
+          type: number
+          format: decimal
+          minimum: 0
+        costPrice:
+          type: number
+          format: decimal
+        stockQuantity:
+          type: integer
+          minimum: 0
+        isActive:
+          type: boolean
+        isFeatured:
+          type: boolean
+        tags:
+          type: array
+          items:
+            type: string
+        attributes:
+          type: object
+
+    Order:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        orderNumber:
+          type: string
+        orderType:
+          type: string
+          enum: [sale, return, exchange]
+        status:
+          type: string
+          enum: [pending, confirmed, processing, shipped, delivered, cancelled, refunded]
+        paymentStatus:
+          type: string
+          enum: [pending, processing, completed, failed, refunded, cancelled]
+        subtotal:
+          type: number
+          format: decimal
+        taxAmount:
+          type: number
+          format: decimal
+        discountAmount:
+          type: number
+          format: decimal
+        shippingAmount:
+          type: number
+          format: decimal
+        totalAmount:
+          type: number
+          format: decimal
+        currency:
+          type: string
+          example: "USD"
+        customerName:
+          type: string
+        customerEmail:
+          type: string
+          format: email
+        customerPhone:
+          type: string
+        deliveryMethod:
+          type: string
+          enum: [pickup, delivery, shipping]
+        deliveryAddress:
+          type: object
+          properties:
+            street:
+              type: string
+            city:
+              type: string
+            state:
+              type: string
+            postalCode:
+              type: string
+            country:
+              type: string
+        salespersonId:
+          type: string
+          format: uuid
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    OrderDetails:
+      allOf:
+        - $ref: '#/components/schemas/Order'
+        - type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/OrderItem'
+            payments:
+              type: array
+              items:
+                $ref: '#/components/schemas/Payment'
+
+    OrderItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        productId:
+          type: string
+          format: uuid
+        productName:
+          type: string
+        productSku:
+          type: string
+        quantity:
+          type: integer
+        unitPrice:
+          type: number
+          format: decimal
+        totalPrice:
+          type: number
+          format: decimal
+
+    CreateOrderRequest:
+      type: object
+      required: [items, customerName, deliveryMethod]
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            required: [productId, quantity]
+            properties:
+              productId:
+                type: string
+                format: uuid
+              quantity:
+                type: integer
+                minimum: 1
+        customerName:
+          type: string
+        customerEmail:
+          type: string
+          format: email
+        customerPhone:
+          type: string
+        deliveryMethod:
+          type: string
+          enum: [pickup, delivery, shipping]
+        deliveryAddress:
+          type: object
+        notes:
+          type: string
+
+    MarketplaceProduct:
+      allOf:
+        - $ref: '#/components/schemas/Product'
+        - type: object
+          properties:
+            shopName:
+              type: string
+            shopId:
+              type: string
+              format: uuid
+            distance:
+              type: number
+              description: Distance in kilometers
+            rating:
+              type: number
+              format: float
+
+    MarketplaceOrderRequest:
+      type: object
+      required: [items, customerName, customerEmail, deliveryMethod]
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              productId:
+                type: string
+                format: uuid
+              quantity:
+                type: integer
+        customerName:
+          type: string
+        customerEmail:
+          type: string
+          format: email
+        customerPhone:
+          type: string
+        deliveryMethod:
+          type: string
+          enum: [pickup, delivery]
+        deliveryAddress:
+          type: object
+        notes:
+          type: string
+
+    NearbyShop:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        address:
+          type: string
+        distance:
+          type: number
+          description: Distance in kilometers
+        phone:
+          type: string
+        businessHours:
+          type: object
+        isOpen:
+          type: boolean
+
+    Payment:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        orderId:
+          type: string
+          format: uuid
+        amount:
+          type: number
+          format: decimal
+        currency:
+          type: string
+        paymentMethod:
+          type: string
+          enum: [cash, card, bank_transfer, digital_wallet, check]
+        status:
+          type: string
+          enum: [pending, processing, completed, failed, refunded, cancelled]
+        processedAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+
+    Invoice:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        invoiceNumber:
+          type: string
+        orderId:
+          type: string
+          format: uuid
+        issueDate:
+          type: string
+          format: date-time
+        dueDate:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [draft, sent, paid, overdue, cancelled]
+        subtotal:
+          type: number
+          format: decimal
+        taxAmount:
+          type: number
+          format: decimal
+        totalAmount:
+          type: number
+          format: decimal
+        pdfUrl:
+          type: string
+          format: uri
+        sentAt:
+          type: string
+          format: date-time
+
+    Notification:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [order_created, low_stock, payment_received, system_alert]
+        title:
+          type: string
+        message:
+          type: string
+        data:
+          type: object
+        readAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+
+    DailySalesReport:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+        totalOrders:
+          type: integer
+        totalRevenue:
+          type: number
+          format: decimal
+        totalItemsSold:
+          type: integer
+        avgOrderValue:
+          type: number
+          format: decimal
+        topSellingProduct:
+          $ref: '#/components/schemas/Product'
+        salesByHour:
+          type: array
+          items:
+            type: object
+            properties:
+              hour:
+                type: integer
+              orders:
+                type: integer
+              revenue:
+                type: number
+
+    SalespersonPerformance:
+      type: object
+      properties:
+        salespersonId:
+          type: string
+          format: uuid
+        firstName:
+          type: string
+        lastName:
+          type: string
+        ordersCount:
+          type: integer
+        totalSales:
+          type: number
+          format: decimal
+        commissionEarned:
+          type: number
+          format: decimal
+        avgOrderValue:
+          type: number
+          format: decimal
+
+    ProductPopularity:
+      type: object
+      properties:
+        productId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        sku:
+          type: string
+        timesOrdered:
+          type: integer
+        quantitySold:
+          type: integer
+        revenueGenerated:
+          type: number
+          format: decimal
+
+    PaginationResponse:
+      type: object
+      properties:
+        page:
+          type: integer
+        limit:
+          type: integer
+        total:
+          type: integer
+        totalPages:
+          type: integer
+        hasNext:
+          type: boolean
+        hasPrev:
+          type: boolean
+
+    ErrorResponse:
+      type: object
+      properties:
+        type:
+          type: string
+          format: uri
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        instance:
+          type: string
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              code:
+                type: string
+              message:
+                type: string
+
+  responses:
+    BadRequest:
+      description: Bad Request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            type: "https://problems.shopmanagement.com/validation-error"
+            title: "Validation Error"
+            status: 400
+            detail: "The request contains invalid data"
+            errors:
+              - field: "email"
+                code: "invalid_email"
+                message: "Email format is invalid"
+
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            type: "https://problems.shopmanagement.com/unauthorized"
+            title: "Authentication Required"
+            status: 401
+            detail: "Valid authentication token required"
+
+    Forbidden:
+      description: Forbidden
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            type: "https://problems.shopmanagement.com/forbidden"
+            title: "Access Denied"
+            status: 403
+            detail: "Insufficient permissions for this operation"
+
+    NotFound:
+      description: Not Found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            type: "https://problems.shopmanagement.com/not-found"
+            title: "Resource Not Found"
+            status: 404
+            detail: "The requested resource could not be found"
+
+    TooManyRequests:
+      description: Too Many Requests
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            type: "https://problems.shopmanagement.com/rate-limit"
+            title: "Rate Limit Exceeded"
+            status: 429
+            detail: "Request rate limit exceeded. Try again later."
+
+    InternalServerError:
+      description: Internal Server Error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            type: "https://problems.shopmanagement.com/server-error"
+            title: "Internal Server Error"
+            status: 500
+            detail: "An unexpected error occurred"
+
+# =====================================================
+# EXAMPLE CURL COMMANDS  
+# =====================================================
+
+# 1. Sign up new user
+# curl -X POST https://api.shopmanagement.com/v1/auth/signup \
+#   -H "Content-Type: application/json" \
+#   -d '{"email":"john@example.com","password":"SecurePass123!","firstName":"John","lastName":"Smith","tenantSlug":"demo-shop"}'
+
+# 2. Sign in user
+# curl -X POST https://api.shopmanagement.com/v1/auth/signin \
+#   -H "Content-Type: application/json" \
+#   -d '{"email":"john@example.com","password":"SecurePass123!"}'
+
+# 3. Create product
+# curl -X POST https://api.shopmanagement.com/v1/products \
+#   -H "Authorization: Bearer $JWT_TOKEN" \
+#   -H "Content-Type: application/json" \
+#   -d '{"name":"Wireless Headphones","sku":"WH-001","price":99.99,"stockQuantity":50}'
+
+# 4. Search marketplace
+# curl -X GET "https://api.shopmanagement.com/v1/marketplace/search?q=headphones&latitude=40.7128&longitude=-74.0060&radius=10"
+
+# 5. Place order
+# curl -X POST https://api.shopmanagement.com/v1/orders \
+#   -H "Authorization: Bearer $JWT_TOKEN" \
+#   -H "Content-Type: application/json" \
+#   -d '{"items":[{"productId":"550e8400-e29b-41d4-a716-446655440000","quantity":2}],"customerName":"Jane Doe","customerEmail":"jane@example.com","deliveryMethod":"pickup"}'
+
+# 6. Get daily sales report
+# curl -X GET "https://api.shopmanagement.com/v1/reports/daily-sales?date=2024-09-19" \
+#   -H "Authorization: Bearer $JWT_TOKEN"
+
+# 7. Adjust inventory
+# curl -X POST https://api.shopmanagement.com/v1/inventory/adjust \
+#   -H "Authorization: Bearer $JWT_TOKEN" \
+#   -H "Content-Type: application/json" \
+#   -d '{"productId":"550e8400-e29b-41d4-a716-446655440000","quantity":10,"type":"restock","notes":"Restocked from supplier"}'
+
+# 8. Generate invoice PDF
+# curl -X POST https://api.shopmanagement.com/v1/invoices/550e8400-e29b-41d4-a716-446655440000/generate-pdf \
+#   -H "Authorization: Bearer $JWT_TOKEN"
+
+# 9. Get low stock products
+# curl -X GET "https://api.shopmanagement.com/v1/inventory/low-stock?limit=20" \
+#   -H "Authorization: Bearer $JWT_TOKEN"
+
+# 10. Find nearby shops
+# curl -X GET "https://api.shopmanagement.com/v1/marketplace/shops/nearby?latitude=40.7128&longitude=-74.0060&radius=5&limit=10"
