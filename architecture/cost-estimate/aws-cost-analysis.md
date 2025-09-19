@@ -81,7 +81,7 @@ Total Base ECS Cost: $247.68/month
 **ECS Scaling Costs**
 
 | Scale Level | API Tasks | Frontend Tasks | Worker Tasks | Monthly Cost |
-|-------------|-----------|----------------|--------------||--------------|
+|-------------|-----------|----------------|--------------|--------------|
 | Base | 2 | 2 | 1 | $247.68 |
 | Medium | 4 | 3 | 2 | $619.20 |
 | High | 8 | 4 | 4 | $1,486.08 |
@@ -120,7 +120,7 @@ Total Base Aurora Cost: $503.76/month
 **Database Scaling Projections**
 
 | Users | Data Size | Instance Type | Read Replicas | Monthly Cost |
-|-------|-----------|---------------|---------------||--------------|
+|-------|-----------|---------------|---------------|--------------|
 | 10K | 50 GB | db.r6g.large | 1 | $503.76 |
 | 50K | 250 GB | db.r6g.xlarge | 2 | $1,205.52 |
 | 100K | 500 GB | db.r6g.2xlarge | 3 | $2,411.04 |
