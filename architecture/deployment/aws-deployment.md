@@ -5,7 +5,7 @@
 1. [Infrastructure Overview](#infrastructure-overview)
 2. [Prerequisites](#prerequisites)
 3. [Terraform Configuration](#terraform-configuration)
-4. [ECS Service Configuration](#ecs-service-configuration)
+4. [EC2 Auto Scaling Configuration](#ec2-auto-scaling-configuration)
 5. [Database Setup](#database-setup)
 6. [Networking Configuration](#networking-configuration)
 7. [CI/CD Pipeline](#cicd-pipeline)
@@ -17,13 +17,13 @@
 
 The Shop Management System is deployed on AWS using the following services:
 
-- **ECS Fargate**: Container orchestration for the API and frontend
+- **EC2 Auto Scaling Group**: Scalable compute instances for the API and frontend
+- **Application Load Balancer**: Request routing and SSL termination
 - **RDS Aurora PostgreSQL**: Primary database with read replicas
 - **ElastiCache Redis**: Caching and session storage
 - **OpenSearch**: Product search and analytics
 - **S3**: Static asset storage and backups
 - **CloudFront**: CDN for global content delivery
-- **Application Load Balancer**: Request routing and SSL termination
 - **Route53**: DNS management
 - **CloudWatch**: Monitoring and logging
 - **AWS Cognito**: Authentication and user management
@@ -53,7 +53,7 @@ Application Load Balancer (ALB)
 │  │ Private Subnet  │ │ Private Subnet  │ │
 │  │    (AZ-a)      │ │    (AZ-b)      │ │
 │  │                │ │                │ │
-│  │  ECS Tasks     │ │  ECS Tasks     │ │
+│  │  EC2 Instances │ │  EC2 Instances │ │
 │  │  - API Server  │ │  - API Server  │ │
 │  │  - Frontend    │ │  - Frontend    │ │
 │  └─────────────────┘ └─────────────────┘ │
@@ -77,7 +77,9 @@ Application Load Balancer (ALB)
 - **SSL Certificate** via AWS Certificate Manager
 - **Service Limits**:
   - VPC: 5 per region (default)
-  - ECS Tasks: 1000 per cluster (default)
+  - EC2 Instances: 20 per region (default, can be increased)
+  - Auto Scaling Groups: 200 per region (default)
+  - Application Load Balancers: 50 per region (default)
   - RDS Instances: 40 per region (default)
   - ElastiCache Clusters: 300 per region (default)
 
@@ -92,9 +94,10 @@ unzip terraform.zip && sudo mv terraform /usr/local/bin/
 curl "https://awscli.amazonaws.com/AWSCLIV2.pkg" -o "AWSCLIV2.pkg"
 sudo installer -pkg AWSCLIV2.pkg -target /
 
-# Install ECS CLI
-sudo curl -L "https://amazon-ecs-cli.s3.amazonaws.com/ecs-cli-darwin-amd64-latest" -o /usr/local/bin/ecs-cli
-sudo chmod +x /usr/local/bin/ecs-cli
+# Install AWS Systems Manager Session Manager Plugin (for secure instance access)
+curl "https://s3.amazonaws.com/session-manager-downloads/plugin/latest/mac/sessionmanager-bundle.zip" -o "sessionmanager-bundle.zip"
+unzip sessionmanager-bundle.zip
+sudo ./sessionmanager-bundle/install -i /usr/local/sessionmanagerplugin -b /usr/local/bin/session-manager-plugin
 
 # Configure AWS credentials
 aws configure
@@ -112,7 +115,7 @@ terraform/
 ├── versions.tf            # Provider versions
 ├── modules/
 │   ├── vpc/               # VPC and networking
-│   ├── ecs/               # ECS cluster and services
+│   ├── ec2/               # EC2 Auto Scaling Group and ALB
 │   ├── rds/               # Database configuration
 │   ├── elasticache/       # Redis configuration
 │   ├── opensearch/        # Search engine setup
@@ -122,9 +125,12 @@ terraform/
 │   ├── dev/               # Development environment
 │   ├── staging/           # Staging environment
 │   └── production/        # Production environment
-└── scripts/
-    ├── deploy.sh          # Deployment script
-    └── destroy.sh         # Cleanup script
+├── scripts/
+│   ├── deploy.sh          # Deployment script
+│   ├── destroy.sh         # Cleanup script
+│   └── user-data.sh       # EC2 instance initialization
+└── packer/
+    └── api-server.json    # AMI build configuration
 ```
 
 ### Main Terraform Configuration
@@ -176,6 +182,22 @@ data "aws_availability_zones" "available" {
 data "aws_caller_identity" "current" {}
 
 data "aws_region" "current" {}
+
+# Get the latest Amazon Linux 2023 AMI
+data "aws_ami" "amazon_linux" {
+  most_recent = true
+  owners      = ["amazon"]
+  
+  filter {
+    name   = "name"
+    values = ["al2023-ami-*-x86_64"]
+  }
+  
+  filter {
+    name   = "virtualization-type"
+    values = ["hvm"]
+  }
+}
 
 # Random password for RDS
 resource "random_password" "db_password" {
@@ -299,9 +321,9 @@ module "s3" {
   cors_allowed_headers = ["*"]
 }
 
-# ECS Module
-module "ecs" {
-  source = "./modules/ecs"
+# EC2 Auto Scaling Module
+module "ec2" {
+  source = "./modules/ec2"
   
   project_name = var.project_name
   environment  = var.environment
@@ -309,25 +331,29 @@ module "ecs" {
   vpc_id     = module.vpc.vpc_id
   subnet_ids = module.vpc.private_subnet_ids
   
-  security_group_ids = [module.security.ecs_security_group_id]
+  security_group_ids = [module.security.ec2_security_group_id]
   
   # Load Balancer Configuration
   alb_subnet_ids         = module.vpc.public_subnet_ids
   alb_security_group_ids = [module.security.alb_security_group_id]
   
-  # Service Configuration
-  api_image         = var.api_image
-  frontend_image    = var.frontend_image
+  # Auto Scaling Configuration
+  instance_type    = var.instance_type
+  min_size         = var.min_instances
+  max_size         = var.max_instances
+  desired_capacity = var.desired_instances
+  
+  # AMI and Launch Template
+  ami_id               = var.custom_ami_id != "" ? var.custom_ami_id : data.aws_ami.amazon_linux.id
+  key_pair_name        = var.key_pair_name
+  enable_monitoring    = true
+  
+  # Application Configuration
   api_port          = var.api_port
   frontend_port     = var.frontend_port
+  node_env          = var.environment
   
-  # Scaling Configuration
-  api_desired_count      = var.api_desired_count
-  frontend_desired_count = var.frontend_desired_count
-  api_min_capacity       = var.api_min_capacity
-  api_max_capacity       = var.api_max_capacity
-  
-  # Environment Variables
+  # Environment Variables for User Data Script
   environment_variables = {
     # Database
     DB_HOST     = module.rds.cluster_endpoint
@@ -370,6 +396,12 @@ module "ecs" {
   health_check_interval           = 30
   health_check_timeout            = 5
   health_check_unhealthy_threshold = 5
+  
+  # Auto Scaling Policies
+  scale_up_adjustment    = 1
+  scale_down_adjustment  = -1
+  cpu_high_threshold     = 70
+  cpu_low_threshold      = 30
 }
 
 # Route53 and SSL Certificate
@@ -428,8 +460,8 @@ resource "aws_route53_record" "main" {
   type    = "A"
   
   alias {
-    name                   = module.ecs.alb_dns_name
-    zone_id                = module.ecs.alb_zone_id
+    name                   = module.ec2.alb_dns_name
+    zone_id                = module.ec2.alb_zone_id
     evaluate_target_health = true
   }
 }
@@ -440,9 +472,393 @@ resource "aws_route53_record" "api" {
   type    = "A"
   
   alias {
-    name                   = module.ecs.alb_dns_name
-    zone_id                = module.ecs.alb_zone_id
+    name                   = module.ec2.alb_dns_name
+    zone_id                = module.ec2.alb_zone_id
     evaluate_target_health = true
+  }
+}
+```
+
+## EC2 Auto Scaling Configuration
+
+The EC2 Auto Scaling configuration provides scalable and cost-effective compute resources for running the Shop Management System. This approach offers better cost control and operational simplicity compared to containerized deployments.
+
+### Key Components
+
+1. **Auto Scaling Group**: Manages the fleet of EC2 instances
+2. **Launch Template**: Defines instance configuration and user data
+3. **Application Load Balancer**: Distributes traffic across healthy instances
+4. **Target Groups**: Health check and routing configuration
+5. **CloudWatch Alarms**: Trigger scaling actions based on metrics
+
+### EC2 Module Structure
+
+**terraform/modules/ec2/main.tf**
+
+```hcl
+# Launch Template
+resource "aws_launch_template" "app_server" {
+  name_prefix   = "${var.project_name}-${var.environment}-"
+  image_id      = var.ami_id
+  instance_type = var.instance_type
+  key_name      = var.key_pair_name
+  
+  vpc_security_group_ids = var.security_group_ids
+  
+  user_data = base64encode(templatefile("${path.module}/user-data.sh", {
+    environment = var.node_env
+    api_port    = var.api_port
+    
+    # Database configuration
+    db_host     = var.environment_variables.DB_HOST
+    db_port     = var.environment_variables.DB_PORT
+    db_name     = var.environment_variables.DB_NAME
+    db_username = var.environment_variables.DB_USERNAME
+    db_password = var.environment_variables.DB_PASSWORD
+    
+    # Redis configuration
+    redis_host = var.environment_variables.REDIS_HOST
+    redis_port = var.environment_variables.REDIS_PORT
+    
+    # Application configuration
+    jwt_secret = var.environment_variables.JWT_SECRET
+    api_base_url = var.environment_variables.API_BASE_URL
+    s3_bucket = var.environment_variables.S3_BUCKET
+    s3_region = var.environment_variables.S3_REGION
+  }))
+  
+  # IAM instance profile for AWS service access
+  iam_instance_profile {
+    name = aws_iam_instance_profile.app_server.name
+  }
+  
+  monitoring {
+    enabled = var.enable_monitoring
+  }
+  
+  metadata_options {
+    http_endpoint = "enabled"
+    http_tokens   = "required"
+  }
+  
+  tag_specifications {
+    resource_type = "instance"
+    tags = {
+      Name        = "${var.project_name}-${var.environment}-app-server"
+      Environment = var.environment
+      Project     = var.project_name
+    }
+  }
+}
+
+# Auto Scaling Group
+resource "aws_autoscaling_group" "app_servers" {
+  name                = "${var.project_name}-${var.environment}-asg"
+  vpc_zone_identifier = var.subnet_ids
+  target_group_arns   = [aws_lb_target_group.app_servers.arn]
+  health_check_type   = "ELB"
+  health_check_grace_period = 300
+  
+  min_size         = var.min_size
+  max_size         = var.max_size
+  desired_capacity = var.desired_capacity
+  
+  launch_template {
+    id      = aws_launch_template.app_server.id
+    version = "$Latest"
+  }
+  
+  # Ensure rolling updates
+  instance_refresh {
+    strategy = "Rolling"
+    preferences {
+      min_healthy_percentage = 50
+    }
+  }
+  
+  tag {
+    key                 = "Name"
+    value               = "${var.project_name}-${var.environment}-asg-instance"
+    propagate_at_launch = true
+  }
+  
+  tag {
+    key                 = "Environment"
+    value               = var.environment
+    propagate_at_launch = true
+  }
+}
+
+# Application Load Balancer
+resource "aws_lb" "app_servers" {
+  name               = "${var.project_name}-${var.environment}-alb"
+  internal           = false
+  load_balancer_type = "application"
+  security_groups    = var.alb_security_group_ids
+  subnets            = var.alb_subnet_ids
+  
+  enable_deletion_protection = var.environment == "production"
+  
+  tags = {
+    Name        = "${var.project_name}-${var.environment}-alb"
+    Environment = var.environment
+  }
+}
+
+# Target Group for API servers
+resource "aws_lb_target_group" "app_servers" {
+  name     = "${var.project_name}-${var.environment}-api-tg"
+  port     = var.api_port
+  protocol = "HTTP"
+  vpc_id   = var.vpc_id
+  
+  health_check {
+    enabled             = true
+    healthy_threshold   = var.health_check_healthy_threshold
+    interval            = var.health_check_interval
+    matcher             = "200"
+    path                = var.health_check_path
+    port                = "traffic-port"
+    protocol            = "HTTP"
+    timeout             = var.health_check_timeout
+    unhealthy_threshold = var.health_check_unhealthy_threshold
+  }
+  
+  tags = {
+    Name        = "${var.project_name}-${var.environment}-api-tg"
+    Environment = var.environment
+  }
+}
+
+# ALB Listener (HTTPS)
+resource "aws_lb_listener" "https" {
+  load_balancer_arn = aws_lb.app_servers.arn
+  port              = "443"
+  protocol          = "HTTPS"
+  ssl_policy        = "ELBSecurityPolicy-TLS-1-2-2017-01"
+  certificate_arn   = var.ssl_certificate_arn
+  
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.app_servers.arn
+  }
+}
+
+# ALB Listener (HTTP - redirect to HTTPS)
+resource "aws_lb_listener" "http" {
+  load_balancer_arn = aws_lb.app_servers.arn
+  port              = "80"
+  protocol          = "HTTP"
+  
+  default_action {
+    type = "redirect"
+    
+    redirect {
+      port        = "443"
+      protocol    = "HTTPS"
+      status_code = "HTTP_301"
+    }
+  }
+}
+```
+
+### User Data Script
+
+The user data script initializes each EC2 instance with the necessary software and configuration:
+
+**terraform/modules/ec2/user-data.sh**
+
+```bash
+#!/bin/bash
+
+# Update system
+yum update -y
+
+# Install Node.js 18
+curl -fsSL https://rpm.nodesource.com/setup_18.x | bash -
+yum install -y nodejs
+
+# Install PM2 process manager
+npm install -g pm2
+
+# Install CloudWatch agent
+yum install -y amazon-cloudwatch-agent
+
+# Create application directory
+mkdir -p /opt/shop-management
+cd /opt/shop-management
+
+# Create application user
+useradd -r -s /bin/false shopapp
+chown shopapp:shopapp /opt/shop-management
+
+# Set environment variables
+cat > /opt/shop-management/.env << EOF
+NODE_ENV=${environment}
+PORT=${api_port}
+
+# Database
+DB_HOST=${db_host}
+DB_PORT=${db_port}
+DB_NAME=${db_name}
+DB_USERNAME=${db_username}
+DB_PASSWORD=${db_password}
+
+# Redis
+REDIS_HOST=${redis_host}
+REDIS_PORT=${redis_port}
+
+# Application
+JWT_SECRET=${jwt_secret}
+API_BASE_URL=${api_base_url}
+S3_BUCKET=${s3_bucket}
+S3_REGION=${s3_region}
+EOF
+
+# Create PM2 ecosystem file
+cat > /opt/shop-management/ecosystem.config.js << 'EOF'
+module.exports = {
+  apps: [{
+    name: 'shop-management-api',
+    script: './dist/server.js',
+    instances: 'max',
+    exec_mode: 'cluster',
+    env_file: './.env',
+    log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
+    error_file: '/var/log/shop-management/error.log',
+    out_file: '/var/log/shop-management/out.log',
+    merge_logs: true,
+    max_memory_restart: '1G',
+    node_args: '--max-old-space-size=1024'
+  }]
+}
+EOF
+
+# Create log directory
+mkdir -p /var/log/shop-management
+chown shopapp:shopapp /var/log/shop-management
+
+# Download and setup application code (placeholder)
+# In real deployment, this would download from S3 or ECR
+echo "Application code deployment would go here"
+
+# Configure CloudWatch agent
+cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json << 'EOF'
+{
+    "metrics": {
+        "namespace": "ShopManagement/EC2",
+        "metrics_collected": {
+            "cpu": {
+                "measurement": ["cpu_usage_idle", "cpu_usage_iowait", "cpu_usage_user", "cpu_usage_system"],
+                "metrics_collection_interval": 60
+            },
+            "mem": {
+                "measurement": ["mem_used_percent"],
+                "metrics_collection_interval": 60
+            },
+            "disk": {
+                "measurement": ["used_percent"],
+                "metrics_collection_interval": 60,
+                "resources": ["*"]
+            }
+        }
+    },
+    "logs": {
+        "logs_collected": {
+            "files": {
+                "collect_list": [
+                    {
+                        "file_path": "/var/log/shop-management/*.log",
+                        "log_group_name": "/aws/ec2/shop-management/${environment}",
+                        "log_stream_name": "{instance_id}-application"
+                    }
+                ]
+            }
+        }
+    }
+}
+EOF
+
+# Start CloudWatch agent
+/opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
+    -a fetch-config -m ec2 -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json -s
+
+# Start application with PM2
+su - shopapp -c "cd /opt/shop-management && pm2 start ecosystem.config.js"
+su - shopapp -c "pm2 save"
+
+# Enable PM2 to start on boot
+env PATH=$PATH:/usr/bin pm2 startup systemd -u shopapp --hp /home/shopapp
+systemctl enable pm2-shopapp
+
+# Create health check endpoint script
+cat > /opt/shop-management/health-check.sh << 'EOF'
+#!/bin/bash
+response=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:${api_port}/health)
+if [ $response -eq 200 ]; then
+    exit 0
+else
+    exit 1
+fi
+EOF
+chmod +x /opt/shop-management/health-check.sh
+```
+
+### Auto Scaling Policies
+
+**terraform/modules/ec2/autoscaling.tf**
+
+```hcl
+# Scale Up Policy
+resource "aws_autoscaling_policy" "scale_up" {
+  name                   = "${var.project_name}-${var.environment}-scale-up"
+  scaling_adjustment     = var.scale_up_adjustment
+  adjustment_type        = "ChangeInCapacity"
+  cooldown               = 300
+  autoscaling_group_name = aws_autoscaling_group.app_servers.name
+}
+
+# Scale Down Policy
+resource "aws_autoscaling_policy" "scale_down" {
+  name                   = "${var.project_name}-${var.environment}-scale-down"
+  scaling_adjustment     = var.scale_down_adjustment
+  adjustment_type        = "ChangeInCapacity"
+  cooldown               = 300
+  autoscaling_group_name = aws_autoscaling_group.app_servers.name
+}
+
+# CloudWatch Alarms
+resource "aws_cloudwatch_metric_alarm" "cpu_high" {
+  alarm_name          = "${var.project_name}-${var.environment}-cpu-high"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = "2"
+  metric_name         = "CPUUtilization"
+  namespace           = "AWS/EC2"
+  period              = "300"
+  statistic           = "Average"
+  threshold           = var.cpu_high_threshold
+  alarm_description   = "This metric monitors ec2 cpu utilization"
+  alarm_actions       = [aws_autoscaling_policy.scale_up.arn]
+  
+  dimensions = {
+    AutoScalingGroupName = aws_autoscaling_group.app_servers.name
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "cpu_low" {
+  alarm_name          = "${var.project_name}-${var.environment}-cpu-low"
+  comparison_operator = "LessThanThreshold"
+  evaluation_periods  = "2"
+  metric_name         = "CPUUtilization"
+  namespace           = "AWS/EC2"
+  period              = "300"
+  statistic           = "Average"
+  threshold           = var.cpu_low_threshold
+  alarm_description   = "This metric monitors ec2 cpu utilization"
+  alarm_actions       = [aws_autoscaling_policy.scale_down.arn]
+  
+  dimensions = {
+    AutoScalingGroupName = aws_autoscaling_group.app_servers.name
   }
 }
 ```
@@ -609,15 +1025,40 @@ variable "opensearch_ebs_volume_size" {
   default     = 100
 }
 
-# ECS Configuration
-variable "api_image" {
-  description = "Docker image for API service"
+# EC2 Configuration
+variable "instance_type" {
+  description = "EC2 instance type for application servers"
+  type        = string
+  default     = "t3.medium"
+}
+
+variable "custom_ami_id" {
+  description = "Custom AMI ID (leave empty to use latest Amazon Linux)"
+  type        = string
+  default     = ""
+}
+
+variable "key_pair_name" {
+  description = "EC2 Key Pair name for instance access"
   type        = string
 }
 
-variable "frontend_image" {
-  description = "Docker image for frontend service"
-  type        = string
+variable "min_instances" {
+  description = "Minimum number of EC2 instances"
+  type        = number
+  default     = 2
+}
+
+variable "max_instances" {
+  description = "Maximum number of EC2 instances"
+  type        = number
+  default     = 6
+}
+
+variable "desired_instances" {
+  description = "Desired number of EC2 instances"
+  type        = number
+  default     = 2
 }
 
 variable "api_port" {
@@ -632,26 +1073,18 @@ variable "frontend_port" {
   default     = 80
 }
 
-variable "api_desired_count" {
-  description = "Desired number of API tasks"
+# Auto Scaling Configuration
+variable "cpu_high_threshold" {
+  description = "CPU threshold for scaling up"
   type        = number
-  default     = 2
+  default     = 70
 }
 
-variable "frontend_desired_count" {
-  description = "Desired number of frontend tasks"
+variable "cpu_low_threshold" {
+  description = "CPU threshold for scaling down"
   type        = number
-  default     = 2
+  default     = 30
 }
-
-variable "api_min_capacity" {
-  description = "Minimum API capacity for auto scaling"
-  type        = number
-  default     = 2
-}
-
-variable "api_max_capacity" {
-  description = "Maximum API capacity for auto scaling"
   type        = number
   default     = 10
 }
