@@ -1,0 +1,194 @@
+@startuml shop_management_er_simplified
+!theme plain
+skinparam linetype ortho
+
+title Shop Management System - Simplified ER Diagram
+
+' Core entities with key relationships
+entity "tenants" as T {
+  * id : UUID <<PK>>
+  --
+  * name : VARCHAR(255)
+  * slug : VARCHAR(100) <<UK>>
+  domain : VARCHAR(255)
+  status : ENUM
+}
+
+entity "users" as U {
+  * id : UUID <<PK>>
+  --
+  * tenant_id : UUID <<FK>>
+  * email : VARCHAR(255) <<UK>>
+  cognito_sub : VARCHAR(255) <<UK>>
+  first_name : VARCHAR(100)
+  last_name : VARCHAR(100)
+  role : ENUM
+  status : ENUM
+}
+
+entity "shops" as S {
+  * id : UUID <<PK>>
+  --
+  * tenant_id : UUID <<FK>>
+  * owner_id : UUID <<FK>>
+  * name : VARCHAR(255)
+  address : TEXT
+  city : VARCHAR(100)
+  location : GEOGRAPHY
+  is_active : BOOLEAN
+}
+
+entity "categories" as CAT {
+  * id : UUID <<PK>>
+  --
+  * tenant_id : UUID <<FK>>
+  parent_id : UUID <<FK>>
+  * name : VARCHAR(255)
+  * slug : VARCHAR(255)
+  is_active : BOOLEAN
+}
+
+entity "products" as P {
+  * id : UUID <<PK>>
+  --
+  * tenant_id : UUID <<FK>>
+  category_id : UUID <<FK>>
+  * created_by : UUID <<FK>>
+  * name : VARCHAR(255)
+  * sku : VARCHAR(100) <<UK>>
+  * price : DECIMAL(10,2)
+  cost : DECIMAL(10,2)
+  quantity_in_stock : INT
+  low_stock_threshold : INT
+  is_active : BOOLEAN
+}
+
+entity "product_variants" as PV {
+  * id : UUID <<PK>>
+  --
+  * tenant_id : UUID <<FK>>
+  * product_id : UUID <<FK>>
+  * sku : VARCHAR(100) <<UK>>
+  * price : DECIMAL(10,2)
+  quantity_in_stock : INT
+  variant_options : JSONB
+  is_active : BOOLEAN
+}
+
+entity "orders" as O {
+  * id : UUID <<PK>>
+  --
+  * tenant_id : UUID <<FK>>
+  * shop_id : UUID <<FK>>
+  customer_id : UUID <<FK>>
+  * order_number : VARCHAR(50) <<UK>>
+  order_type : ENUM
+  status : ENUM
+  * total_amount : DECIMAL(10,2)
+  payment_status : ENUM
+  payment_method : ENUM
+}
+
+entity "order_items" as OI {
+  * id : UUID <<PK>>
+  --
+  * tenant_id : UUID <<FK>>
+  * order_id : UUID <<FK>>
+  * product_id : UUID <<FK>>
+  product_variant_id : UUID <<FK>>
+  * quantity : INT
+  * unit_price : DECIMAL(10,2)
+  * total_price : DECIMAL(10,2)
+}
+
+entity "inventory_transactions" as IT {
+  * id : UUID <<PK>>
+  --
+  * tenant_id : UUID <<FK>>
+  * product_id : UUID <<FK>>
+  product_variant_id : UUID <<FK>>
+  * shop_id : UUID <<FK>>
+  * created_by : UUID <<FK>>
+  * transaction_type : ENUM
+  * quantity_change : INT
+  * quantity_after : INT
+}
+
+entity "sales_analytics" as SA {
+  * id : UUID <<PK>>
+  --
+  * tenant_id : UUID <<FK>>
+  * shop_id : UUID <<FK>>
+  product_id : UUID <<FK>>
+  category_id : UUID <<FK>>
+  * date_recorded : DATE
+  * total_sales : DECIMAL(12,2)
+  * total_orders : INT
+  * total_quantity : INT
+}
+
+' Multi-tenant relationships - everything belongs to a tenant
+T ||--o{ U : "tenant_id"
+T ||--o{ S : "tenant_id"
+T ||--o{ CAT : "tenant_id"
+T ||--o{ P : "tenant_id"
+T ||--o{ PV : "tenant_id"
+T ||--o{ O : "tenant_id"
+T ||--o{ OI : "tenant_id"
+T ||--o{ IT : "tenant_id"
+T ||--o{ SA : "tenant_id"
+
+' Core business relationships
+U ||--o{ S : "owner_id"
+U ||--o{ P : "created_by"
+U ||--o{ IT : "created_by"
+
+S ||--o{ O : "shop_id"
+S ||--o{ IT : "shop_id"
+S ||--o{ SA : "shop_id"
+
+CAT ||--o{ CAT : "parent_id"
+CAT ||--o{ P : "category_id"
+CAT ||--o{ SA : "category_id"
+
+P ||--o{ PV : "product_id"
+P ||--o{ OI : "product_id"
+P ||--o{ IT : "product_id"
+P ||--o{ SA : "product_id"
+
+PV ||--o{ OI : "product_variant_id"
+PV ||--o{ IT : "product_variant_id"
+
+O ||--o{ OI : "order_id"
+
+note top of T
+<b>Multi-Tenant Root</b>
+Every entity is scoped to a tenant
+Row Level Security enforces isolation
+end note
+
+note right of P
+<b>Product Catalog</b>
+• Full-text search on name/description
+• Inventory tracking with stock alerts
+• Support for product variants
+• Price and cost tracking
+end note
+
+note bottom of O
+<b>Order Processing</b>
+• Guest and registered customers
+• Multiple payment methods
+• Order status workflow
+• Inventory automatically updated
+end note
+
+note left of IT
+<b>Inventory Control</b>
+• All stock movements tracked
+• Automatic alerts for low stock
+• Links to orders and adjustments
+• Audit trail for all changes
+end note
+
+@enduml

@@ -1,0 +1,363 @@
+@startuml shop_management_er_diagram
+!define PRIMARY_KEY(x) <color:red><b>x</b></color>
+!define FOREIGN_KEY(x) <color:blue><u>x</u></color>
+!define UNIQUE(x) <color:green><u>x</u></color>
+
+title Shop Management System - Entity Relationship Diagram
+
+' Core Tenant Management
+entity "tenants" {
+  PRIMARY_KEY(id) : UUID <<PK>>
+  --
+  name : VARCHAR(255) NOT NULL
+  UNIQUE(slug) : VARCHAR(100) UNIQUE NOT NULL
+  domain : VARCHAR(255)
+  status : tenant_status DEFAULT 'active'
+  subscription_plan : VARCHAR(50) DEFAULT 'basic'
+  settings : JSONB
+  created_at : TIMESTAMP WITH TIME ZONE
+  updated_at : TIMESTAMP WITH TIME ZONE
+}
+
+entity "users" {
+  PRIMARY_KEY(id) : UUID <<PK>>
+  --
+  FOREIGN_KEY(tenant_id) : UUID <<FK>>
+  UNIQUE(email) : VARCHAR(255) UNIQUE NOT NULL
+  UNIQUE(cognito_sub) : VARCHAR(255) UNIQUE
+  first_name : VARCHAR(100)
+  last_name : VARCHAR(100)
+  phone : VARCHAR(20)
+  role : user_role DEFAULT 'salesperson'
+  status : user_status DEFAULT 'active'
+  last_login_at : TIMESTAMP WITH TIME ZONE
+  created_at : TIMESTAMP WITH TIME ZONE
+  updated_at : TIMESTAMP WITH TIME ZONE
+}
+
+' Shop Management
+entity "shops" {
+  PRIMARY_KEY(id) : UUID <<PK>>
+  --
+  FOREIGN_KEY(tenant_id) : UUID <<FK>>
+  FOREIGN_KEY(owner_id) : UUID <<FK>>
+  name : VARCHAR(255) NOT NULL
+  description : TEXT
+  address : TEXT
+  city : VARCHAR(100)
+  state : VARCHAR(100)
+  postal_code : VARCHAR(20)
+  country : VARCHAR(2) DEFAULT 'US'
+  location : GEOGRAPHY(POINT, 4326)
+  phone : VARCHAR(20)
+  email : VARCHAR(255)
+  website : VARCHAR(255)
+  business_hours : JSONB
+  is_active : BOOLEAN DEFAULT true
+  created_at : TIMESTAMP WITH TIME ZONE
+  updated_at : TIMESTAMP WITH TIME ZONE
+}
+
+' Product Catalog
+entity "categories" {
+  PRIMARY_KEY(id) : UUID <<PK>>
+  --
+  FOREIGN_KEY(tenant_id) : UUID <<FK>>
+  FOREIGN_KEY(parent_id) : UUID <<FK>>
+  name : VARCHAR(255) NOT NULL
+  slug : VARCHAR(255) NOT NULL
+  description : TEXT
+  image_url : VARCHAR(500)
+  is_active : BOOLEAN DEFAULT true
+  sort_order : INT DEFAULT 0
+  created_at : TIMESTAMP WITH TIME ZONE
+  updated_at : TIMESTAMP WITH TIME ZONE
+}
+
+entity "products" {
+  PRIMARY_KEY(id) : UUID <<PK>>
+  --
+  FOREIGN_KEY(tenant_id) : UUID <<FK>>
+  FOREIGN_KEY(category_id) : UUID <<FK>>
+  FOREIGN_KEY(created_by) : UUID <<FK>>
+  name : VARCHAR(255) NOT NULL
+  slug : VARCHAR(255) NOT NULL
+  description : TEXT
+  short_description : VARCHAR(500)
+  UNIQUE(sku) : VARCHAR(100) NOT NULL
+  barcode : VARCHAR(100)
+  price : DECIMAL(10,2) NOT NULL
+  cost : DECIMAL(10,2)
+  compare_price : DECIMAL(10,2)
+  weight : DECIMAL(8,3)
+  weight_unit : VARCHAR(10) DEFAULT 'kg'
+  requires_shipping : BOOLEAN DEFAULT true
+  is_taxable : BOOLEAN DEFAULT true
+  tax_rate : DECIMAL(5,2) DEFAULT 0.00
+  track_quantity : BOOLEAN DEFAULT true
+  quantity_in_stock : INT DEFAULT 0
+  low_stock_threshold : INT DEFAULT 10
+  allow_backorder : BOOLEAN DEFAULT false
+  tags : TEXT[]
+  attributes : JSONB
+  is_active : BOOLEAN DEFAULT true
+  meta_title : VARCHAR(255)
+  meta_description : VARCHAR(500)
+  created_at : TIMESTAMP WITH TIME ZONE
+  updated_at : TIMESTAMP WITH TIME ZONE
+}
+
+entity "product_images" {
+  PRIMARY_KEY(id) : UUID <<PK>>
+  --
+  FOREIGN_KEY(tenant_id) : UUID <<FK>>
+  FOREIGN_KEY(product_id) : UUID <<FK>>
+  image_url : VARCHAR(500) NOT NULL
+  alt_text : VARCHAR(255)
+  sort_order : INT DEFAULT 0
+  is_primary : BOOLEAN DEFAULT false
+  created_at : TIMESTAMP WITH TIME ZONE
+}
+
+entity "product_variants" {
+  PRIMARY_KEY(id) : UUID <<PK>>
+  --
+  FOREIGN_KEY(tenant_id) : UUID <<FK>>
+  FOREIGN_KEY(product_id) : UUID <<FK>>
+  UNIQUE(sku) : VARCHAR(100) NOT NULL
+  barcode : VARCHAR(100)
+  price : DECIMAL(10,2) NOT NULL
+  cost : DECIMAL(10,2)
+  compare_price : DECIMAL(10,2)
+  weight : DECIMAL(8,3)
+  quantity_in_stock : INT DEFAULT 0
+  low_stock_threshold : INT DEFAULT 10
+  variant_options : JSONB
+  is_active : BOOLEAN DEFAULT true
+  created_at : TIMESTAMP WITH TIME ZONE
+  updated_at : TIMESTAMP WITH TIME ZONE
+}
+
+' Order Management
+entity "orders" {
+  PRIMARY_KEY(id) : UUID <<PK>>
+  --
+  FOREIGN_KEY(tenant_id) : UUID <<FK>>
+  FOREIGN_KEY(shop_id) : UUID <<FK>>
+  FOREIGN_KEY(customer_id) : UUID <<FK>>
+  UNIQUE(order_number) : VARCHAR(50) NOT NULL
+  order_type : order_type DEFAULT 'sale'
+  status : order_status DEFAULT 'pending'
+  customer_email : VARCHAR(255)
+  customer_phone : VARCHAR(20)
+  customer_first_name : VARCHAR(100)
+  customer_last_name : VARCHAR(100)
+  billing_address : TEXT
+  billing_city : VARCHAR(100)
+  billing_state : VARCHAR(100)
+  billing_postal_code : VARCHAR(20)
+  billing_country : VARCHAR(2) DEFAULT 'US'
+  shipping_address : TEXT
+  shipping_city : VARCHAR(100)
+  shipping_state : VARCHAR(100)
+  shipping_postal_code : VARCHAR(20)
+  shipping_country : VARCHAR(2) DEFAULT 'US'
+  subtotal : DECIMAL(10,2) NOT NULL DEFAULT 0.00
+  tax_amount : DECIMAL(10,2) NOT NULL DEFAULT 0.00
+  shipping_cost : DECIMAL(10,2) NOT NULL DEFAULT 0.00
+  discount_amount : DECIMAL(10,2) NOT NULL DEFAULT 0.00
+  total_amount : DECIMAL(10,2) NOT NULL DEFAULT 0.00
+  currency : VARCHAR(3) DEFAULT 'USD'
+  payment_status : payment_status DEFAULT 'pending'
+  payment_method : payment_method
+  delivery_method : delivery_method DEFAULT 'pickup'
+  notes : TEXT
+  order_date : TIMESTAMP WITH TIME ZONE
+  shipped_at : TIMESTAMP WITH TIME ZONE
+  delivered_at : TIMESTAMP WITH TIME ZONE
+  created_at : TIMESTAMP WITH TIME ZONE
+  updated_at : TIMESTAMP WITH TIME ZONE
+}
+
+entity "order_items" {
+  PRIMARY_KEY(id) : UUID <<PK>>
+  --
+  FOREIGN_KEY(tenant_id) : UUID <<FK>>
+  FOREIGN_KEY(order_id) : UUID <<FK>>
+  FOREIGN_KEY(product_id) : UUID <<FK>>
+  FOREIGN_KEY(product_variant_id) : UUID <<FK>>
+  quantity : INT NOT NULL
+  unit_price : DECIMAL(10,2) NOT NULL
+  total_price : DECIMAL(10,2) NOT NULL
+  product_name : VARCHAR(255) NOT NULL
+  product_sku : VARCHAR(100) NOT NULL
+  created_at : TIMESTAMP WITH TIME ZONE
+}
+
+' Inventory Management
+entity "inventory_transactions" {
+  PRIMARY_KEY(id) : UUID <<PK>>
+  --
+  FOREIGN_KEY(tenant_id) : UUID <<FK>>
+  FOREIGN_KEY(product_id) : UUID <<FK>>
+  FOREIGN_KEY(product_variant_id) : UUID <<FK>>
+  FOREIGN_KEY(shop_id) : UUID <<FK>>
+  FOREIGN_KEY(created_by) : UUID <<FK>>
+  transaction_type : inventory_transaction_type NOT NULL
+  quantity_change : INT NOT NULL
+  quantity_after : INT NOT NULL
+  unit_cost : DECIMAL(10,2)
+  total_cost : DECIMAL(10,2)
+  reference_type : VARCHAR(50)
+  reference_id : UUID
+  notes : TEXT
+  created_at : TIMESTAMP WITH TIME ZONE
+}
+
+entity "stock_alerts" {
+  PRIMARY_KEY(id) : UUID <<PK>>
+  --
+  FOREIGN_KEY(tenant_id) : UUID <<FK>>
+  FOREIGN_KEY(product_id) : UUID <<FK>>
+  FOREIGN_KEY(product_variant_id) : UUID <<FK>>
+  FOREIGN_KEY(shop_id) : UUID <<FK>>
+  alert_threshold : INT NOT NULL
+  current_stock : INT NOT NULL
+  is_resolved : BOOLEAN DEFAULT false
+  resolved_at : TIMESTAMP WITH TIME ZONE
+  created_at : TIMESTAMP WITH TIME ZONE
+}
+
+' Analytics and Reporting
+entity "sales_analytics" {
+  PRIMARY_KEY(id) : UUID <<PK>>
+  --
+  FOREIGN_KEY(tenant_id) : UUID <<FK>>
+  FOREIGN_KEY(shop_id) : UUID <<FK>>
+  FOREIGN_KEY(product_id) : UUID <<FK>>
+  FOREIGN_KEY(category_id) : UUID <<FK>>
+  date_recorded : DATE NOT NULL
+  total_sales : DECIMAL(12,2) NOT NULL DEFAULT 0.00
+  total_orders : INT NOT NULL DEFAULT 0
+  total_quantity : INT NOT NULL DEFAULT 0
+  average_order_value : DECIMAL(10,2) NOT NULL DEFAULT 0.00
+  created_at : TIMESTAMP WITH TIME ZONE
+  updated_at : TIMESTAMP WITH TIME ZONE
+}
+
+entity "product_performance" {
+  PRIMARY_KEY(id) : UUID <<PK>>
+  --
+  FOREIGN_KEY(tenant_id) : UUID <<FK>>
+  FOREIGN_KEY(product_id) : UUID <<FK>>
+  date_recorded : DATE NOT NULL
+  views : INT DEFAULT 0
+  orders : INT DEFAULT 0
+  quantity_sold : INT DEFAULT 0
+  revenue : DECIMAL(10,2) DEFAULT 0.00
+  conversion_rate : DECIMAL(5,4) DEFAULT 0.0000
+  created_at : TIMESTAMP WITH TIME ZONE
+  updated_at : TIMESTAMP WITH TIME ZONE
+}
+
+' System & Notifications
+entity "notifications" {
+  PRIMARY_KEY(id) : UUID <<PK>>
+  --
+  FOREIGN_KEY(tenant_id) : UUID <<FK>>
+  FOREIGN_KEY(user_id) : UUID <<FK>>
+  notification_type : notification_type NOT NULL
+  title : VARCHAR(255) NOT NULL
+  message : TEXT NOT NULL
+  data : JSONB
+  is_read : BOOLEAN DEFAULT false
+  read_at : TIMESTAMP WITH TIME ZONE
+  expires_at : TIMESTAMP WITH TIME ZONE
+  created_at : TIMESTAMP WITH TIME ZONE
+}
+
+entity "audit_logs" {
+  PRIMARY_KEY(id) : UUID <<PK>>
+  --
+  FOREIGN_KEY(tenant_id) : UUID <<FK>>
+  FOREIGN_KEY(user_id) : UUID <<FK>>
+  entity_type : VARCHAR(50) NOT NULL
+  entity_id : UUID NOT NULL
+  action : VARCHAR(50) NOT NULL
+  old_values : JSONB
+  new_values : JSONB
+  ip_address : VARCHAR(45)
+  user_agent : TEXT
+  created_at : TIMESTAMP WITH TIME ZONE
+}
+
+' Relationships
+tenants ||--o{ users : "has many"
+tenants ||--o{ shops : "has many"
+tenants ||--o{ categories : "has many"
+tenants ||--o{ products : "has many"
+tenants ||--o{ orders : "has many"
+tenants ||--o{ notifications : "has many"
+tenants ||--o{ audit_logs : "has many"
+
+users ||--o{ shops : "owns"
+users ||--o{ products : "creates"
+users ||--o{ inventory_transactions : "creates"
+users ||--o{ notifications : "receives"
+users ||--o{ audit_logs : "performs"
+
+shops ||--o{ orders : "processes"
+shops ||--o{ inventory_transactions : "tracks"
+shops ||--o{ stock_alerts : "monitors"
+shops ||--o{ sales_analytics : "generates"
+
+categories ||--o{ categories : "parent/child"
+categories ||--o{ products : "categorizes"
+categories ||--o{ sales_analytics : "tracks"
+
+products ||--o{ product_images : "has images"
+products ||--o{ product_variants : "has variants"
+products ||--o{ order_items : "sold in"
+products ||--o{ inventory_transactions : "stock movements"
+products ||--o{ stock_alerts : "low stock"
+products ||--o{ sales_analytics : "performance"
+products ||--o{ product_performance : "metrics"
+
+product_variants ||--o{ order_items : "sold as"
+product_variants ||--o{ inventory_transactions : "variant stock"
+product_variants ||--o{ stock_alerts : "variant alerts"
+
+orders ||--o{ order_items : "contains"
+
+note top of tenants
+  <b>Multi-Tenant Architecture</b>
+  - All entities are tenant-scoped
+  - Row Level Security (RLS) enforced
+  - Complete data isolation per tenant
+end note
+
+note top of products
+  <b>Product Catalog</b>
+  - Supports variants (size, color, etc.)
+  - Full-text search enabled
+  - Inventory tracking with alerts
+  - Hierarchical categories
+end note
+
+note top of orders
+  <b>Order Management</b>
+  - Support for guest checkouts
+  - Multiple payment methods
+  - Shipping and billing addresses
+  - Order status workflow
+end note
+
+note top of inventory_transactions
+  <b>Inventory Tracking</b>
+  - All stock movements recorded
+  - Supports multiple transaction types
+  - Links to orders and other references
+  - Automatic low stock alerts
+end note
+
+@enduml
